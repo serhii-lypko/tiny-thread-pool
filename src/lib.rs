@@ -3,18 +3,13 @@
 //! "How does this arbitrary concurrent primitive scale?"
 //! -> Counter, HashTable, Queue, RingBuffer, etc.
 
+pub mod computable;
+
+use crate::computable::Computable;
 use std::{
     sync::{Arc, Barrier},
     thread::{self, JoinHandle},
 };
-
-pub trait Computable {
-    type Inner;
-
-    fn compute_step(&self) -> bool;
-    fn reset(&self);
-    fn curr(&self) -> Self::Inner;
-}
 
 // TODO: consider synchronization alternatives:
 // - crossbeam WaitGroup
