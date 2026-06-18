@@ -3,11 +3,16 @@
 //! "How does this arbitrary concurrent primitive scale?"
 //! -> Counter, HashTable, Queue, RingBuffer, etc.
 
+#![allow(dead_code)]
+
 pub mod computable;
 
 use crate::computable::Computable;
 use std::{
-    sync::{Arc, Barrier},
+    sync::{
+        Arc, Barrier,
+        atomic::{AtomicBool, Ordering},
+    },
     thread::{self, JoinHandle},
 };
 
@@ -21,6 +26,7 @@ pub struct ThreadPool<C: Computable> {
 
     start: Arc<Barrier>,
     done: Arc<Barrier>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl<C> ThreadPool<C>
@@ -33,6 +39,8 @@ where
         let start = Arc::new(Barrier::new(threads_count + 1));
         let done = Arc::new(Barrier::new(threads_count + 1));
 
+        let shutdown = Arc::new(AtomicBool::new(false));
+
         let state = Arc::new(state);
 
         for _ in 0..threads_count {
@@ -41,11 +49,16 @@ where
 
                 let start = start.clone();
                 let done = done.clone();
+                let shutdown = shutdown.clone();
 
                 move || {
                     loop {
                         // Will be unblocked when all threads is ready (signal commited from the run_batch).
                         start.wait();
+
+                        if shutdown.load(Ordering::Relaxed) {
+                            break;
+                        }
 
                         'batch: loop {
                             let completed = state.compute_step();
@@ -68,11 +81,14 @@ where
             workers,
             start,
             done,
+            shutdown,
         }
     }
 
     // reset, start, wait for done
     pub fn run_batch(&self) {
+        self.shutdown.store(false, Ordering::Relaxed);
+
         self.state.reset();
 
         // Gives start signal for a workers.
@@ -80,5 +96,74 @@ where
 
         // Establishes a happens-before edge.
         self.done.wait();
+    }
+
+    pub fn shutdown(self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+
+        // wake all workers; they hit the check and break
+        self.start.wait();
+
+        for w in self.workers {
+            w.join().unwrap();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Computable, ThreadPool};
+    use std::sync::Mutex;
+
+    #[test]
+    fn test_naive_counter() {
+        struct NaiveCounter {
+            counter: Mutex<u64>,
+            treshold: u64,
+        }
+
+        impl Computable for NaiveCounter {
+            type Inner = u64;
+
+            fn compute_step(&self) -> bool {
+                let mut ctr = self.counter.lock().unwrap();
+                *ctr += 1;
+
+                if *ctr >= self.treshold {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+
+            fn reset(&self) {
+                let mut ctr = self.counter.lock().unwrap();
+                *ctr = 0;
+            }
+
+            fn curr(&self) -> Self::Inner {
+                let ctr = self.counter.lock().unwrap();
+                *ctr
+            }
+        }
+
+        let naive_counter = NaiveCounter {
+            counter: Mutex::new(0),
+            treshold: 1e6 as u64,
+        };
+
+        let thread_pool = ThreadPool::new(naive_counter, 8);
+
+        thread_pool.run_batch();
+
+        // TODO -> finish implementing shutdown
+        // TODO -> what exactly to test?
+        // TODO -> what about having 1000008 as result?
+
+        // TODO -> test shutdown?
+
+        thread_pool.shutdown();
+
+        // dbg!(thread_pool.state.curr());
     }
 }

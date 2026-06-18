@@ -2,7 +2,7 @@
 pub trait Computable {
     /// The value `curr` reports — typically the final result of a batch
     /// (e.g. the counter total), used to assert correctness in tests.
-    type Inner;
+    type Inner: std::fmt::Debug;
 
     /// Perform one unit of work against the shared state.
     fn compute_step(&self) -> bool;
