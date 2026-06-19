@@ -43,7 +43,7 @@ where
 
         let state = Arc::new(state);
 
-        for _ in 0..threads_count {
+        for id in 0..threads_count {
             let task = thread::spawn({
                 let state = state.clone();
 
@@ -61,7 +61,7 @@ where
                         }
 
                         'batch: loop {
-                            let completed = state.compute_step();
+                            let completed = state.compute_step(id);
 
                             if completed {
                                 // Mark current thread as done
@@ -127,7 +127,7 @@ mod tests {
         impl Computable for NaiveCounter {
             type Inner = u64;
 
-            fn compute_step(&self) -> bool {
+            fn compute_step(&self, _worker_id: usize) -> bool {
                 let mut ctr = self.counter.lock().unwrap();
                 *ctr += 1;
 

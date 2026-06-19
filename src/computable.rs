@@ -5,7 +5,7 @@ pub trait Computable {
     type Inner: std::fmt::Debug;
 
     /// Perform one unit of work against the shared state.
-    fn compute_step(&self) -> bool;
+    fn compute_step(&self, worker_id: usize) -> bool;
 
     /// Clear the shared state back to its starting point.
     fn reset(&self);
