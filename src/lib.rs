@@ -154,7 +154,7 @@ mod tests {
             treshold: 1e6 as u64,
         };
 
-        const WORKERS: usize = 9;
+        const WORKERS: usize = 8;
         let thread_pool = ThreadPool::new(naive_counter, WORKERS);
 
         thread_pool.run_batch();
