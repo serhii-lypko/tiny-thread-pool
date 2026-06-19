@@ -24,7 +24,7 @@ pub struct ThreadPool<C: Computable> {
 
     workers: Vec<JoinHandle<()>>,
 
-    start: Arc<Barrier>,
+    ready: Arc<Barrier>,
     done: Arc<Barrier>,
     shutdown: Arc<AtomicBool>,
 }
@@ -36,7 +36,7 @@ where
     pub fn new(state: C, threads_count: usize) -> Self {
         let mut workers = vec![];
 
-        let start = Arc::new(Barrier::new(threads_count + 1));
+        let ready = Arc::new(Barrier::new(threads_count + 1));
         let done = Arc::new(Barrier::new(threads_count + 1));
 
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -47,14 +47,14 @@ where
             let task = thread::spawn({
                 let state = state.clone();
 
-                let start = start.clone();
+                let ready = ready.clone();
                 let done = done.clone();
                 let shutdown = shutdown.clone();
 
                 move || {
                     loop {
                         // Will be unblocked when all threads is ready (signal commited from the run_batch).
-                        start.wait();
+                        ready.wait();
 
                         if shutdown.load(Ordering::Relaxed) {
                             break;
@@ -79,7 +79,7 @@ where
         ThreadPool {
             state,
             workers,
-            start,
+            ready,
             done,
             shutdown,
         }
@@ -92,7 +92,7 @@ where
         self.state.reset();
 
         // Gives start signal for a workers.
-        self.start.wait();
+        self.ready.wait();
 
         // Establishes a happens-before edge.
         self.done.wait();
@@ -101,12 +101,14 @@ where
     pub fn shutdown(self) {
         self.shutdown.store(true, Ordering::Relaxed);
 
-        // wake all workers; they hit the check and break
-        self.start.wait();
+        // wake all workers - they'll hit the check and break
+        self.ready.wait();
 
         for w in self.workers {
             w.join().unwrap();
         }
+
+        self.state.reset();
     }
 }
 
@@ -152,18 +154,15 @@ mod tests {
             treshold: 1e6 as u64,
         };
 
-        let thread_pool = ThreadPool::new(naive_counter, 8);
+        const WORKERS: usize = 9;
+        let thread_pool = ThreadPool::new(naive_counter, WORKERS);
 
         thread_pool.run_batch();
 
-        // TODO -> finish implementing shutdown
-        // TODO -> what exactly to test?
-        // TODO -> what about having 1000008 as result?
-
-        // TODO -> test shutdown?
+        // Testing the range
+        assert!(thread_pool.state.treshold <= thread_pool.state.curr());
+        assert!(thread_pool.state.curr() < thread_pool.state.treshold + WORKERS as u64);
 
         thread_pool.shutdown();
-
-        // dbg!(thread_pool.state.curr());
     }
 }

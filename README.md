@@ -1,9 +1,6 @@
 # tiny-thread-pool
 
-A minimal barrier-synchronized worker pool for benchmarking how a concurrent
-primitive scales across threads. You implement [`Computable`] for your data
-structure (counter, hash table, queue, ring buffer, ...), and each call to
-`run_batch()` resets it, fires all workers at once, and waits for them to finish.
+A minimal barrier-synchronized worker pool for benchmarking the scalability of concurrent primitives across threads. A data structure (counter, hash table, queue, ring buffer, ...) implements [Computable]. Each call to `run_batch()` resets the structure, releases all workers simultaneously, and waits for them to complete.
 
 ## Usage example
 
