@@ -110,6 +110,10 @@ where
 
         self.state.reset();
     }
+
+    pub fn state(&self) -> &C {
+        &self.state
+    }
 }
 
 #[cfg(test)]
